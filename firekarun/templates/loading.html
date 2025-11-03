@@ -3,74 +3,54 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>FixKaroo :: Processing...</title>
-    <!-- We will use Tailwind CSS for styling -->
+    <!-- This meta tag will redirect to the /success page after 8 seconds -->
+    <meta http-equiv="refresh" content="8;url={{ url_for('success_page') }}">
+    <title>FixKaroo Security Scan</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
-        /* A simple but fun spinner animation */
+        body { font-family: 'Inter', sans-serif; }
         .spinner {
-            width: 56px;
-            height: 56px;
-            border: 6px solid #e5e7eb; /* gray-200 */
-            border-top-color: #3b82f6; /* blue-500 */
+            border: 4px solid rgba(255, 255, 255, 0.2);
+            border-left-color: #6366F1; /* Indigo */
             border-radius: 50%;
+            width: 50px;
+            height: 50px;
             animation: spin 1s linear infinite;
         }
-
         @keyframes spin {
-            to {
-                transform: rotate(360deg);
-            }
+            to { transform: rotate(360deg); }
         }
     </style>
 </head>
-<body class="bg-gray-900 text-white font-sans">
-    <div class="flex flex-col items-center justify-center min-h-screen text-center p-6">
-        <div class="spinner"></div>
-        <h1 class="text-3xl font-bold mt-8">FixKaroo Firewall</h1>
-        <p class="text-xl text-gray-400 mt-4" id="loading-message">
-            Initializing security protocols...
-        </p>
+<body class="bg-gray-900 text-gray-100 flex items-center justify-center min-h-screen">
+    <div class="text-center p-8">
+        <div class="spinner mx-auto mb-6"></div>
+        <h1 class="text-3xl font-bold mb-4">Securing your connection...</h1>
+        <p id="message" class="text-lg text-gray-400">Please wait while we check your request.</p>
     </div>
 
     <script>
         const messages = [
-            "Checking if you're up to no good...",
-            "Analyzing your digital footprints...",
-            "Consulting the cyber-oracles...",
-            "Reticulating splines... badly...",
-            "Counting ones and zeros...",
-            "Making sure you're not a robot... or are you?",
-            "Polishing the firewall...",
+            'Checking if you\'re up to no good...',
+            'Analyzing your digital footprints...',
+            'Reticulating splines...',
+            'Making sure you aren\'t a robot... (or are you?)',
+            'Polishing the firewall...',
+            'Verifying security clearance...',
+            'Counting your packets...'
         ];
 
-        let messageIndex = 0;
-        const messageElement = document.getElementById('loading-message');
+        let msgIndex = 0;
+        const msgElement = document.getElementById('message');
 
-        // Function to change the loading message
-        function changeMessage() {
-            messageIndex = (messageIndex + 1) % messages.length;
-            messageElement.style.opacity = 0;
+        setInterval(() => {
+            msgIndex = (msgIndex + 1) % messages.length;
+            msgElement.style.opacity = 0;
             setTimeout(() => {
-                messageElement.textContent = messages[messageIndex];
-                messageElement.style.opacity = 1;
+                msgElement.innerText = messages[msgIndex];
+                msgElement.style.opacity = 1;
             }, 500); // Fade-in time
-        }
-
-        // Change message every 2 seconds
-        const messageInterval = setInterval(changeMessage, 2000);
-
-        // After a total delay, redirect to the success page
-        const totalDelay = 6000; // 6 seconds
-        setTimeout(() => {
-            clearInterval(messageInterval);
-            // Final "success" message before redirect
-            messageElement.textContent = "All checks passed!";
-            setTimeout(() => {
-                // Use url_for to get the correct path
-                window.location.href = "{{ url_for('success') }}";
-            }, 1000); // Wait 1 sec on final message
-        }, totalDelay);
+        }, 2000); // Change message every 2 seconds
     </script>
 </body>
 </html>
