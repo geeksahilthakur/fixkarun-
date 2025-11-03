@@ -8,7 +8,7 @@ app = Flask(__name__)
 
 # --- CONFIGURATION ---
 # !! IMPORTANT: This MUST be your Netlify URL, not your custom domain
-TARGET_WEBSITE = "https://microsoft.in.net"
+TARGET_WEBSITE = "https://endearing-belekoy-43fd45.netlify.app"
 
 # Admin credentials
 ADMIN_USER = os.environ.get('ADMIN_USER', 'admin')
