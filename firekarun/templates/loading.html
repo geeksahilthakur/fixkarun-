@@ -39,10 +39,10 @@
             'Verifying security clearance...',
             'Counting your packets...'
         ];
-
+        
         let msgIndex = 0;
         const msgElement = document.getElementById('message');
-
+        
         setInterval(() => {
             msgIndex = (msgIndex + 1) % messages.length;
             msgElement.style.opacity = 0;
