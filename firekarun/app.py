@@ -7,12 +7,13 @@ import requests
 app = Flask(__name__)
 
 # --- CONFIGURATION ---
-# !! IMPORTANT: Set this to your *real* Netlify site URL
-TARGET_WEBSITE = "https://microsoft.in.net/"  # <--- SET THIS
+# !! IMPORTANT: This MUST be your Netlify URL, not your custom domain
+TARGET_WEBSITE = "https://microsoft.in.net/"
 
 # Admin credentials
 ADMIN_USER = os.environ.get('ADMIN_USER', 'admin')
 ADMIN_PASS = os.environ.get('ADMIN_PASS', 'fixkaroo123')
+# Reads the key you set in Render's Environment Variables
 app.secret_key = os.environ.get('SECRET_KEY', 'a_very_secret_key_for_sessions')
 
 RULES_FILE = 'rules.json'
@@ -22,6 +23,7 @@ RULES_FILE = 'rules.json'
 def get_rules():
     """Loads firewall rules from the JSON file."""
     if not os.path.exists(RULES_FILE):
+        # Create a default rules file if one doesn't exist
         save_rules({"blocked_ips": [], "blocked_ports": [21, 22], "blocked_combos": []})
     with open(RULES_FILE, 'r') as f:
         return json.load(f)
@@ -38,16 +40,16 @@ def is_request_blocked(client_ip, client_port, rules):
         return True
     
     try:
-        # This try/except already handles client_port being None
+        # This try/except handles client_port being None or invalid
         if int(client_port) in rules.get('blocked_ports', []):
             print(f"Blocking Port: {client_port}")
             return True
     except (ValueError, TypeError):
-        pass 
+        pass # Ignore if port is not a valid integer
 
     for combo in rules.get('blocked_combos', []):
         try:
-            # This try/except already handles client_port being None
+            # This try/except handles client_port being None or invalid
             if combo.get('ip') == client_ip and int(combo.get('port')) == int(client_port):
                 print(f"Blocking Combo: {client_ip}:{client_port}")
                 return True
@@ -152,7 +154,13 @@ def main_proxy_handler(path):
         try:
             target_url = f"{TARGET_WEBSITE}/{path}"
             
-            headers = {key: value for (key, value) in request.headers if key.lower() not in 'host'}
+            # --- THIS IS THE FIX ---
+            # Filter out 'host' and 'x-forwarded-' headers, which can cause 400 errors
+            headers = {
+                key: value for (key, value) in request.headers 
+                if key.lower() != 'host' and not key.lower().startswith('x-forwarded-')
+            }
+            # Set the correct Host header for the target site
             headers['Host'] = TARGET_WEBSITE.split('//')[1]
             
             resp = requests.request(
@@ -169,7 +177,7 @@ def main_proxy_handler(path):
                 # Rewrite redirect to point back to our proxy
                 new_location = resp.headers['Location']
                 if new_location.startswith(TARGET_WEBSITE):
-                    # Replace target with our host_url, which is https://microsoft.in.net/
+                    # Replace target with our host_url (e.g., https://microsoft.in.net/)
                     new_location = new_location.replace(TARGET_WEBSITE, request.host_url.rstrip('/'), 1)
                 elif new_location.startswith('/'):
                     # This is a relative redirect, just pass it along
@@ -193,13 +201,14 @@ def main_proxy_handler(path):
 
         except requests.exceptions.RequestException as e:
             print(f"Error proxying request: {e}")
-            # Updated line: Show a user-friendly error page
+            # Show a user-friendly error page
             return render_template('proxy_error.html', target=TARGET_WEBSITE, error=str(e)), 502
         # --- END OF PROXY LOGIC ---
 
     else:
         # --- NEW VISITOR / FIREWALL CHECK ---
         client_ip = request.headers.get('X-Forwarded-For', request.remote_addr)
+        # Use request.environ.get for port, as request.remote_port doesn't exist
         client_port = request.environ.get('REMOTE_PORT')
         
         rules = get_rules()
@@ -209,6 +218,5 @@ def main_proxy_handler(path):
         # If not blocked, mark as verified and show the loading screen
         session['is_verified'] = True
         return render_template('loading.html')
-
 if __name__ == "__main__":
     app.run(debug=True, use_reloader=False)
