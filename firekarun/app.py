@@ -219,13 +219,15 @@ def remove_rule():
 
 # --- Main Execution ---
 
-if __name__ == '__main__':
-    # Initialize the rules file on first run
-    load_rules()
-    print("--- FixKaroo Admin Credentials ---")
-    print(f"Username: {ADMIN_USER}")
-    print(f"Password: {ADMIN_PASS}")
-    print("----------------------------------")
-    print("To change, set FIXKAROO_ADMIN_USER and FIXKAROO_ADMIN_PASS env variables.")
-    # Run on 0.0.0.0 to be accessible on your network
-    app.run(host='0.0.0.0', port=5000, debug=True)
+# if __name__ == '__main__':
+#     # Initialize the rules file on first run
+#     load_rules()
+#     print("--- FixKaroo Admin Credentials ---")
+#     print(f"Username: {ADMIN_USER}")
+#     print(f"Password: {ADMIN_PASS}")
+#     print("----------------------------------")
+#     print("To change, set FIXKAROO_ADMIN_USER and FIXKAROO_ADMIN_PASS env variables.")
+#     # Run on 0.0.0.0 to be accessible on your network
+#     app.run(host='0.0.0.0', port=5000, debug=True)
+if __name__ == "__main__":
+    app.run(debug=True, use_reloader=False)
