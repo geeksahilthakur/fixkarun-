@@ -1,233 +1,224 @@
-import os
 import json
+import os
 from functools import wraps
-from flask import (
-    Flask,
-    render_template,
-    request,
-    redirect,
-    url_for,
-    Response,
-    jsonify
-)
+from flask import Flask, request, Response, render_template, redirect, url_for, session
+import requests
 
 app = Flask(__name__)
-app.config['SECRET_KEY'] = os.environ.get('FLASK_SECRET_KEY', 'a_very_secret_key_fallback')
 
-# --- Configuration ---
+# --- CONFIGURATION ---
+# !! IMPORTANT: Set this to your *real* Netlify site URL
+TARGET_WEBSITE = "https://microsoft.in.net"  # <--- SET THIS
+
+# Admin credentials
+ADMIN_USER = os.environ.get('ADMIN_USER', 'admin')
+ADMIN_PASS = os.environ.get('ADMIN_PASS', 'fixkaroo123')
+app.secret_key = os.environ.get('SECRET_KEY', 'a_very_secret_key_for_sessions')
+
 RULES_FILE = 'rules.json'
-# Load admin credentials from environment variables, with defaults
-ADMIN_USER = os.environ.get('FIXKAROO_ADMIN_USER', 'admin')
-ADMIN_PASS = os.environ.get('FIXKAROO_ADMIN_PASS', 'password')
 
 
-# --- Helper Functions ---
+# --- FIREWALL LOGIC ---
 
-def load_rules():
-    """Loads the firewall rules from the JSON file."""
+def get_rules():
+    """Loads firewall rules from the JSON file."""
     if not os.path.exists(RULES_FILE):
-        # Create a default empty rules file if it doesn't exist
-        save_rules({"blocked_ips": [], "blocked_ports": [], "blocked_combos": []})
-        return {"blocked_ips": [], "blocked_ports": [], "blocked_combos": []}
-    try:
-        with open(RULES_FILE, 'r') as f:
-            return json.load(f)
-    except (IOError, json.JSONDecodeError):
-        # Handle file read error or bad JSON
-        return {"blocked_ips": [], "blocked_ports": [], "blocked_combos": []}
+        save_rules({"blocked_ips": [], "blocked_ports": [21, 22], "blocked_combos": []})
+    with open(RULES_FILE, 'r') as f:
+        return json.load(f)
 
 
 def save_rules(rules):
-    """Saves the given rules dictionary to the JSON file."""
-    try:
-        with open(RULES_FILE, 'w') as f:
-            json.dump(rules, f, indent=4)
+    """Saves firewall rules to the JSON file."""
+    with open(RULES_FILE, 'w') as f:
+        json.dump(rules, f, indent=4)
+
+
+def is_request_blocked(client_ip, client_port, rules):
+    """Checks if a request matches any firewall rules."""
+    if client_ip in rules.get('blocked_ips', []):
+        print(f"Blocking IP: {client_ip}")
         return True
-    except IOError:
-        return False
+
+    try:
+        if int(client_port) in rules.get('blocked_ports', []):
+            print(f"Blocking Port: {client_port}")
+            return True
+    except (ValueError, TypeError):
+        pass
+
+    for combo in rules.get('blocked_combos', []):
+        try:
+            if combo.get('ip') == client_ip and int(combo.get('port')) == int(client_port):
+                print(f"Blocking Combo: {client_ip}:{client_port}")
+                return True
+        except (ValueError, TypeError):
+            continue
+
+    return False
 
 
-# --- Authentication ---
-
-def check_auth(username, password):
-    """Checks if a username and password are valid."""
-    return username == ADMIN_USER and password == ADMIN_PASS
-
-
-def authenticate():
-    """Sends a 401 response that enables basic auth."""
-    return Response(
-        'Could not verify your access level for that URL.\n'
-        'You have to login with proper credentials', 401,
-        {'WWW-Authenticate': 'Basic realm="Login Required"'})
-
+# --- ADMIN PANEL ---
 
 def requires_auth(f):
-    """Decorator to protect routes with basic authentication."""
+    """Decorator to protect admin routes with session-based auth."""
 
     @wraps(f)
     def decorated(*args, **kwargs):
-        auth = request.authorization
-        if not auth or not check_auth(auth.username, auth.password):
-            return authenticate()
+        if not session.get('logged_in'):
+            return redirect(url_for('admin_login'))
         return f(*args, **kwargs)
 
     return decorated
 
 
-# --- Firewall Logic ---
-
-def is_request_blocked():
-    """Checks the incoming request against the firewall rules."""
-    rules = load_rules()
-    client_ip = request.remote_addr
-    # Note: REMOTE_PORT is the *source* port of the client, which changes
-    # for every new connection. Blocking source ports is unusual but
-    hidden_port = request.environ.get('REMOTE_PORT')
-    # Use a fallback if REMOTE_PORT is not available (e.g., in some test environments)
-    client_port = 0
-    if hidden_port:
-        try:
-            client_port = int(hidden_port)
-        except ValueError:
-            client_port = 0  # Could not parse port
-
-    # 1. Check blocked IPs
-    if client_ip in rules.get('blocked_ips', []):
-        print(f"Blocking IP: {client_ip}")
-        return True
-
-    # 2. Check blocked ports
-    if client_port in rules.get('blocked_ports', []):
-        print(f"Blocking Port: {client_port}")
-        return True
-
-    # 3. Check blocked IP/Port combinations
-    for combo in rules.get('blocked_combos', []):
-        if combo.get('ip') == client_ip and combo.get('port') == client_port:
-            print(f"Blocking Combo: {client_ip}:{client_port}")
-            return True
-
-    return False
+@app.route('/admin/login', methods=['GET', 'POST'])
+def admin_login():
+    """Admin login page."""
+    error = None
+    if request.method == 'POST':
+        if request.form['username'] == ADMIN_USER and request.form['password'] == ADMIN_PASS:
+            session['logged_in'] = True
+            return redirect(url_for('admin_panel'))
+        else:
+            error = 'Invalid Credentials. Please try again.'
+    # Uses the 'admin_login.html' template
+    return render_template('admin_login.html', error=error)
 
 
-# --- Main Application Routes ---
+@app.route('/admin/logout')
+def admin_logout():
+    """Logs the admin out."""
+    session.pop('logged_in', None)
+    return redirect(url_for('admin_login'))
+
+
+@app.route('/admin', methods=['GET', 'POST'])
+@requires_auth
+def admin_panel():
+    """Admin panel for managing rules."""
+    rules = get_rules()
+    if request.method == 'POST':
+        if 'add_ip' in request.form and request.form['ip']:
+            if request.form['ip'] not in rules['blocked_ips']:
+                rules['blocked_ips'].append(request.form['ip'])
+        if 'add_port' in request.form and request.form['port']:
+            port_to_add = int(request.form['port'])
+            if port_to_add not in rules['blocked_ports']:
+                rules['blocked_ports'].append(port_to_add)
+        if 'add_combo_ip' in request.form and 'add_combo_port' in request.form:
+            if request.form['add_combo_ip'] and request.form['add_combo_port']:
+                combo_to_add = {
+                    'ip': request.form['add_combo_ip'],
+                    'port': int(request.form['add_combo_port'])
+                }
+                if combo_to_add not in rules['blocked_combos']:
+                    rules['blocked_combos'].append(combo_to_add)
+
+        if 'delete_ip' in request.form:
+            rules['blocked_ips'] = [ip for ip in rules['blocked_ips'] if ip != request.form['delete_ip']]
+        if 'delete_port' in request.form:
+            rules['blocked_ports'] = [port for port in rules['blocked_ports'] if
+                                      port != int(request.form['delete_port'])]
+        if 'delete_combo' in request.form:
+            ip_to_del, port_to_del = request.form['delete_combo'].split(':')
+            rules['blocked_combos'] = [
+                c for c in rules['blocked_combos']
+                if not (c.get('ip') == ip_to_del and str(c.get('port')) == port_to_del)
+            ]
+
+        save_rules(rules)
+        return redirect(url_for('admin_panel'))
+
+    return render_template('admin.html', rules=rules)
+
+
+# --- UI & PROXY ROUTES ---
 
 @app.route('/')
-def index():
-    """Main entry point. Runs the firewall check."""
-    if is_request_blocked():
-        return redirect(url_for('blocked'))
+def homepage():
+    """
+    This is the main entry point.
+    It checks the user and serves loading.html (if passed) or blocked.html (if failed).
+    """
+    client_ip = request.headers.get('X-Forwarded-For', request.remote_addr)
+    client_port = request.remote_port
+
+    rules = get_rules()
+    if is_request_blocked(client_ip, client_port, rules):
+        return render_template('blocked.html', ip=client_ip, port=client_port), 403
 
     # If not blocked, show the loading screen
     return render_template('loading.html')
 
 
 @app.route('/success')
-def success():
-    """The page shown after the 'firewall check' passes."""
+def success_page():
+    """
+    This page is shown after loading.html.
+    It will automatically redirect to the /proxy route to show the real site.
+    """
     return render_template('success.html')
 
 
-@app.route('/blocked')
-def blocked():
-    """The page shown if the firewall blocks the request."""
-    return render_template('blocked.html'), 403
+@app.route('/proxy', defaults={'path': ''})
+@app.route('/proxy/<path:path>', methods=['GET', 'POST', 'PUT', 'DELETE', 'PATCH'])
+def proxy(path):
+    """
+    This is the core reverse proxy function.
+    It forwards requests to the TARGET_WEBSITE.
+    """
+
+    # Run a final check just in case
+    client_ip = request.headers.get('X-Forwarded-For', request.remote_addr)
+    client_port = request.remote_port
+    rules = get_rules()
+    if is_request_blocked(client_ip, client_port, rules):
+        return render_template('blocked.html', ip=client_ip, port=client_port), 403
+
+    # If not blocked, forward the request to the target website
+    try:
+        target_url = f"{TARGET_WEBSITE}/{path}"
+
+        headers = {key: value for (key, value) in request.headers if key.lower() != 'host'}
+        headers['Host'] = TARGET_WEBSITE.split('//')[1]
+
+        resp = requests.request(
+            method=request.method,
+            url=target_url,
+            headers=headers,
+            data=request.get_data(),
+            cookies=request.cookies,
+            allow_redirects=False,
+            stream=True
+        )
+
+        if resp.status_code in (301, 302, 307, 308):
+            # Rewrite redirect to point back to our proxy
+            new_location = resp.headers['Location'].replace(TARGET_WEBSITE, url_for('proxy', _external=True))
+            return redirect(new_location, code=resp.status_code)
+
+        excluded_headers = ['content-encoding', 'content-length', 'transfer-encoding', 'connection']
+        resp_headers = [(name, value) for (name, value) in resp.raw.headers.items()
+                        if name.lower() not in excluded_headers]
+
+        # --- Link Rewriting ---
+        content = resp.content
+        if 'text/html' in resp.headers.get('Content-Type', ''):
+            # Rewrite links in the HTML to point back to our proxy
+            content = content.replace(
+                TARGET_WEBSITE.encode('utf-8'),
+                request.host_url.rstrip('/').encode('utf-8') + url_for('proxy').encode('utf-8')
+            )
+
+        return Response(content, resp.status_code, resp_headers)
+
+    except requests.exceptions.RequestException as e:
+        print(f"Error proxying request: {e}")
+        return "Proxy Error: Could not connect to target website.", 502
 
 
-# --- Admin Panel Routes ---
-
-@app.route('/admin')
-@requires_auth
-def admin():
-    """Displays the admin panel for managing rules."""
-    rules = load_rules()
-    return render_template('admin.html', rules=rules)
 
 
-@app.route('/admin/add_rule', methods=['POST'])
-@requires_auth
-def add_rule():
-    """Handles adding a new rule."""
-    rules = load_rules()
-    rule_type = request.form.get('rule_type')
-
-    if rule_type == 'ip':
-        ip = request.form.get('ip')
-        if ip and ip not in rules['blocked_ips']:
-            rules['blocked_ips'].append(ip)
-
-    elif rule_type == 'port':
-        port = request.form.get('port')
-        if port:
-            try:
-                port_num = int(port)
-                if port_num not in rules['blocked_ports']:
-                    rules['blocked_ports'].append(port_num)
-            except ValueError:
-                pass  # Ignore invalid port numbers
-
-    elif rule_type == 'combo':
-        ip = request.form.get('ip')
-        port = request.form.get('port')
-        if ip and port:
-            try:
-                port_num = int(port)
-                new_combo = {'ip': ip, 'port': port_num}
-                if new_combo not in rules['blocked_combos']:
-                    rules['blocked_combos'].append(new_combo)
-            except ValueError:
-                pass  # Ignore invalid port numbers
-
-    save_rules(rules)
-    return redirect(url_for('admin'))
-
-
-@app.route('/admin/remove_rule', methods=['POST'])
-@requires_auth
-def remove_rule():
-    """Handles removing an existing rule."""
-    rules = load_rules()
-    rule_type = request.form.get('rule_type')
-    value = request.form.get('value')
-
-    if rule_type == 'ip' and value in rules['blocked_ips']:
-        rules['blocked_ips'].remove(value)
-
-    elif rule_type == 'port':
-        try:
-            port_num = int(value)
-            if port_num in rules['blocked_ports']:
-                rules['blocked_ports'].remove(port_num)
-        except (ValueError, TypeError):
-            pass
-
-    elif rule_type == 'combo':
-        # Value will be a string like "ip:port"
-        try:
-            ip, port_str = value.split(':')
-            port_num = int(port_str)
-            combo_to_remove = {'ip': ip, 'port': port_num}
-            if combo_to_remove in rules['blocked_combos']:
-                rules['blocked_combos'].remove(combo_to_remove)
-        except (ValueError, IndexError):
-            pass  # Ignore malformed values
-
-    save_rules(rules)
-    return redirect(url_for('admin'))
-
-
-# --- Main Execution ---
-
-# if __name__ == '__main__':
-#     # Initialize the rules file on first run
-#     load_rules()
-#     print("--- FixKaroo Admin Credentials ---")
-#     print(f"Username: {ADMIN_USER}")
-#     print(f"Password: {ADMIN_PASS}")
-#     print("----------------------------------")
-#     print("To change, set FIXKAROO_ADMIN_USER and FIXKAROO_ADMIN_PASS env variables.")
-#     # Run on 0.0.0.0 to be accessible on your network
-#     app.run(host='0.0.0.0', port=5000, debug=True)
 if __name__ == "__main__":
     app.run(debug=True, use_reloader=False)
