@@ -57,6 +57,7 @@ def is_request_blocked(client_ip, client_port, rules):
     return False
 
 # --- ADMIN PANEL ---
+# (Admin routes must be defined *before* the catch-all proxy route)
 
 def requires_auth(f):
     """Decorator to protect admin routes with session-based auth."""
@@ -127,87 +128,86 @@ def admin_panel():
 
 # --- UI & PROXY ROUTES ---
 
-@app.route('/')
-def homepage():
-    """
-    This is the main entry point.
-    It checks the user and serves loading.html (if passed) or blocked.html (if failed).
-    """
-    client_ip = request.headers.get('X-Forwarded-For', request.remote_addr)
-    # FIX: Use request.environ.get('REMOTE_PORT') instead of request.remote_port
-    client_port = request.environ.get('REMOTE_PORT')
-    
-    rules = get_rules()
-    if is_request_blocked(client_ip, client_port, rules):
-        return render_template('blocked.html', ip=client_ip, port=client_port), 403
-
-    # If not blocked, show the loading screen
-    return render_template('loading.html')
-
 @app.route('/success')
 def success_page():
     """
     This page is shown after loading.html.
-    It will automatically redirect to the /proxy route to show the real site.
+    It will automatically redirect to the / (root) to show the real site.
     """
     return render_template('success.html')
 
-@app.route('/proxy', defaults={'path': ''})
-@app.route('/proxy/<path:path>', methods=['GET', 'POST', 'PUT', 'DELETE', 'PATCH'])
-def proxy(path):
+@app.route('/', defaults={'path': ''})
+@app.route('/<path:path>', methods=['GET', 'POST', 'PUT', 'DELETE', 'PATCH'])
+def main_proxy_handler(path):
     """
-    This is the core reverse proxy function.
-    It forwards requests to the TARGET_WEBSITE.
+    This is the main entry point for ALL traffic.
+    It checks if the user is verified (in session).
+    If not, it runs the firewall check and shows the loading screen.
+    If verified, it proxies the request.
     """
     
-    # Run a final check just in case
-    client_ip = request.headers.get('X-Forwarded-For', request.remote_addr)
-    # FIX: Use request.environ.get('REMOTE_PORT') instead of request.remote_port
-    client_port = request.environ.get('REMOTE_PORT')
-    rules = get_rules()
-    if is_request_blocked(client_ip, client_port, rules):
-        return render_template('blocked.html', ip=client_ip, port=client_port), 403
-
-    # If not blocked, forward the request to the target website
-    try:
-        target_url = f"{TARGET_WEBSITE}/{path}"
-        
-        headers = {key: value for (key, value) in request.headers if key.lower() != 'host'}
-        headers['Host'] = TARGET_WEBSITE.split('//')[1]
-        
-        resp = requests.request(
-            method=request.method,
-            url=target_url,
-            headers=headers,
-            data=request.get_data(),
-            cookies=request.cookies,
-            allow_redirects=False,
-            stream=True
-        )
-
-        if resp.status_code in (301, 302, 307, 308):
-            # Rewrite redirect to point back to our proxy
-            new_location = resp.headers['Location'].replace(TARGET_WEBSITE, url_for('proxy', _external=True))
-            return redirect(new_location, code=resp.status_code)
-
-        excluded_headers = ['content-encoding', 'content-length', 'transfer-encoding', 'connection']
-        resp_headers = [(name, value) for (name, value) in resp.raw.headers.items()
-                        if name.lower() not in excluded_headers]
-
-        # --- Link Rewriting ---
-        content = resp.content
-        if 'text/html' in resp.headers.get('Content-Type', ''):
-            # Rewrite links in the HTML to point back to our proxy
-            content = content.replace(
-                TARGET_WEBSITE.encode('utf-8'), 
-                request.host_url.rstrip('/').encode('utf-8') + url_for('proxy').encode('utf-8')
+    # Check if user is already verified in this session
+    if session.get('is_verified'):
+        # --- PROXY LOGIC ---
+        try:
+            target_url = f"{TARGET_WEBSITE}/{path}"
+            
+            headers = {key: value for (key, value) in request.headers if key.lower() not in 'host'}
+            headers['Host'] = TARGET_WEBSITE.split('//')[1]
+            
+            resp = requests.request(
+                method=request.method,
+                url=target_url,
+                headers=headers,
+                data=request.get_data(),
+                cookies=request.cookies,
+                allow_redirects=False,
+                stream=True
             )
-        
-        return Response(content, resp.status_code, resp_headers)
 
-    except requests.exceptions.RequestException as e:
-        print(f"Error proxying request: {e}")
-        return "Proxy Error: Could not connect to target website.", 502
+            if resp.status_code in (301, 302, 307, 308):
+                # Rewrite redirect to point back to our proxy
+                new_location = resp.headers['Location']
+                if new_location.startswith(TARGET_WEBSITE):
+                    # Replace target with our host_url, which is https://microsoft.in.net/
+                    new_location = new_location.replace(TARGET_WEBSITE, request.host_url.rstrip('/'), 1)
+                elif new_location.startswith('/'):
+                    # This is a relative redirect, just pass it along
+                    pass
+                return redirect(new_location, code=resp.status_code)
+
+            excluded_headers = ['content-encoding', 'content-length', 'transfer-encoding', 'connection']
+            resp_headers = [(name, value) for (name, value) in resp.raw.headers.items()
+                            if name.lower() not in excluded_headers]
+
+            # --- Link Rewriting ---
+            content = resp.content
+            if 'text/html' in resp.headers.get('Content-Type', ''):
+                # Rewrite links in the HTML to point back to our proxy
+                content = content.replace(
+                    TARGET_WEBSITE.encode('utf-8'), 
+                    request.host_url.rstrip('/').encode('utf-8')
+                )
+            
+            return Response(content, resp.status_code, resp_headers)
+
+        except requests.exceptions.RequestException as e:
+            print(f"Error proxying request: {e}")
+            return "Proxy Error: Could not connect to target website.", 502
+        # --- END OF PROXY LOGIC ---
+
+    else:
+        # --- NEW VISITOR / FIREWALL CHECK ---
+        client_ip = request.headers.get('X-Forwarded-For', request.remote_addr)
+        client_port = request.environ.get('REMOTE_PORT')
+        
+        rules = get_rules()
+        if is_request_blocked(client_ip, client_port, rules):
+            return render_template('blocked.html', ip=client_ip, port=client_port), 403
+
+        # If not blocked, mark as verified and show the loading screen
+        session['is_verified'] = True
+        return render_template('loading.html')
 
 
 
