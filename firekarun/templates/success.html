@@ -3,8 +3,11 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <!-- This meta tag will redirect to the /proxy route after 3 seconds -->
-    <meta http-equiv="refresh" content="3;url={{ url_for('proxy') }}">
+    <!-- 
+      FIX: This now redirects to the root (/) of your site,
+      where the session-based proxy will take over.
+    -->
+    <meta http-equiv="refresh" content="3;url=/">
     <title>Scan Complete!</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
