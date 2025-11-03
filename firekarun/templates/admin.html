@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FixKaroo :: Admin Panel</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-100 font-sans">
+    <nav class="bg-gray-900 text-white p-4 shadow-md">
+        <div class="container mx-auto">
+            <h1 class="text-2xl font-bold">FixKaroo Firewall - Admin Panel</h1>
+        </div>
+    </nav>
+
+    <div class="container mx-auto p-6 grid grid-cols-1 md:grid-cols-2 gap-6">
+
+        <!-- Add Rules Section -->
+        <div class="bg-white p-6 rounded-lg shadow-lg">
+            <h2 class="text-2xl font-semibold mb-4 border-b pb-2">Add New Rule</h2>
+
+            <!-- Add IP Form -->
+            <form action="{{ url_for('add_rule') }}" method="POST" class="mb-4">
+                <input type="hidden" name="rule_type" value="ip">
+                <label for="ip" class="block text-sm font-medium text-gray-700">Block IP Address:</label>
+                <div class="flex mt-1">
+                    <input type="text" name="ip" id="ip" class="flex-1 block w-full rounded-l-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500" placeholder="e.g., 192.168.1.100" required>
+                    <button type="submit" class="inline-flex items-center rounded-r-md border border-l-0 border-gray-300 bg-gray-50 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100">
+                        Add IP
+                    </button>
+                </div>
+            </form>
+
+            <!-- Add Port Form -->
+            <form action="{{ url_for('add_rule') }}" method="POST" class="mb-4">
+                <input type="hidden" name="rule_type" value="port">
+                <label for="port" class="block text-sm font-medium text-gray-700">Block Source Port:</label>
+                <div class="flex mt-1">
+                    <input type="number" name="port" id="port" class="flex-1 block w-full rounded-l-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500" placeholder="e.g., 8080" required>
+                    <button type="submit" class="inline-flex items-center rounded-r-md border border-l-0 border-gray-300 bg-gray-50 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100">
+                        Add Port
+                    </button>
+                </div>
+            </form>
+
+            <!-- Add Combo Form -->
+            <form action="{{ url_for('add_rule') }}" method="POST" class="mb-4">
+                <input type="hidden" name="rule_type" value="combo">
+                <label class="block text-sm font-medium text-gray-700">Block IP/Port Combo:</label>
+                <div class="flex flex-col sm:flex-row mt-1 space-y-2 sm:space-y-0 sm:space-x-2">
+                    <input type="text" name="ip" class="flex-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500" placeholder="IP Address" required>
+                    <input type="number" name="port" class="flex-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500" placeholder="Port" required>
+                </div>
+                <button type="submit" class="mt-2 w-full inline-flex justify-center rounded-md border border-transparent bg-blue-600 px-4 py-2 text-base font-medium text-white shadow-sm hover:bg-blue-700">
+                    Add Combo
+                </button>
+            </form>
+        </div>
+
+        <!-- Current Rules Section -->
+        <div class="bg-white p-6 rounded-lg shadow-lg">
+            <h2 class="text-2xl font-semibold mb-4 border-b pb-2">Current Block Rules</h2>
+
+            <!-- Helper macro for list items -->
+            {% macro rule_item(rule_type, value, display_text) -%}
+            <li class="flex items-center justify-between py-2 px-3 hover:bg-gray-50 rounded-md">
+                <span class="text-gray-900 font-mono">{{ display_text }}</span>
+                <form action="{{ url_for('remove_rule') }}" method="POST" class="inline">
+                    <input type="hidden" name="rule_type" value="{{ rule_type }}">
+                    <input type="hidden" name="value" value="{{ value }}">
+                    <button type="submit" class="text-red-500 hover:text-red-700 font-medium text-sm">
+                        Remove
+                    </button>
+                </form>
+            </li>
+            {%- endmacro %}
+
+            <!-- Blocked IPs -->
+            <div>
+                <h3 class="text-lg font-medium text-gray-900 mb-2">Blocked IPs</h3>
+                <ul class="divide-y divide-gray-200">
+                    {% for ip in rules.blocked_ips %}
+                        {{ rule_item('ip', ip, ip) }}
+                    {% else %}
+                        <li class="text-gray-500 italic py-2">No IPs blocked.</li>
+                    {% endfor %}
+                </ul>
+            </div>
+
+            <!-- Blocked Ports -->
+            <div class="mt-6">
+                <h3 class="text-lg font-medium text-gray-900 mb-2">Blocked Source Ports</h3>
+                <ul class="divide-y divide-gray-200">
+                    {% for port in rules.blocked_ports %}
+                        {{ rule_item('port', port, port) }}
+                    {% else %}
+                        <li class="text-gray-500 italic py-2">No ports blocked.</li>
+                    {% endfor %}
+                </ul>
+            </div>
+
+            <!-- Blocked Combos -->
+            <div class="mt-6">
+                <h3 class="text-lg font-medium text-gray-900 mb-2">Blocked IP:Port Combos</h3>
+                <ul class="divide-y divide-gray-200">
+                    {% for combo in rules.blocked_combos %}
+                        {% set combo_val = combo.ip ~ ':' ~ combo.port %}
+                        {{ rule_item('combo', combo_val, combo_val) }}
+                    {% else %}
+                        <li class="text-gray-500 italic py-2">No combos blocked.</li>
+                    {% endfor %}
+                </ul>
+            </div>
+
+        </div>
+    </div>
+</body>
+</html>

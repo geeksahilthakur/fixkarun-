@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FixKaroo :: Processing...</title>
+    <!-- We will use Tailwind CSS for styling -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        /* A simple but fun spinner animation */
+        .spinner {
+            width: 56px;
+            height: 56px;
+            border: 6px solid #e5e7eb; /* gray-200 */
+            border-top-color: #3b82f6; /* blue-500 */
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+            to {
+                transform: rotate(360deg);
+            }
+        }
+    </style>
+</head>
+<body class="bg-gray-900 text-white font-sans">
+    <div class="flex flex-col items-center justify-center min-h-screen text-center p-6">
+        <div class="spinner"></div>
+        <h1 class="text-3xl font-bold mt-8">FixKaroo Firewall</h1>
+        <p class="text-xl text-gray-400 mt-4" id="loading-message">
+            Initializing security protocols...
+        </p>
+    </div>
+
+    <script>
+        const messages = [
+            "Checking if you're up to no good...",
+            "Analyzing your digital footprints...",
+            "Consulting the cyber-oracles...",
+            "Reticulating splines... badly...",
+            "Counting ones and zeros...",
+            "Making sure you're not a robot... or are you?",
+            "Polishing the firewall...",
+        ];
+
+        let messageIndex = 0;
+        const messageElement = document.getElementById('loading-message');
+
+        // Function to change the loading message
+        function changeMessage() {
+            messageIndex = (messageIndex + 1) % messages.length;
+            messageElement.style.opacity = 0;
+            setTimeout(() => {
+                messageElement.textContent = messages[messageIndex];
+                messageElement.style.opacity = 1;
+            }, 500); // Fade-in time
+        }
+
+        // Change message every 2 seconds
+        const messageInterval = setInterval(changeMessage, 2000);
+
+        // After a total delay, redirect to the success page
+        const totalDelay = 6000; // 6 seconds
+        setTimeout(() => {
+            clearInterval(messageInterval);
+            // Final "success" message before redirect
+            messageElement.textContent = "All checks passed!";
+            setTimeout(() => {
+                // Use url_for to get the correct path
+                window.location.href = "{{ url_for('success') }}";
+            }, 1000); // Wait 1 sec on final message
+        }, totalDelay);
+    </script>
+</body>
+</html>
+
