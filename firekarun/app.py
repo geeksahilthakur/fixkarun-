@@ -193,7 +193,8 @@ def main_proxy_handler(path):
 
         except requests.exceptions.RequestException as e:
             print(f"Error proxying request: {e}")
-            return "Proxy Error: Could not connect to target website.", 502
+            # Updated line: Show a user-friendly error page
+            return render_template('proxy_error.html', target=TARGET_WEBSITE, error=str(e)), 502
         # --- END OF PROXY LOGIC ---
 
     else:
@@ -208,8 +209,6 @@ def main_proxy_handler(path):
         # If not blocked, mark as verified and show the loading screen
         session['is_verified'] = True
         return render_template('loading.html')
-
-
 
 if __name__ == "__main__":
     app.run(debug=True, use_reloader=False)
